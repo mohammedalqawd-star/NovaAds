@@ -1,10 +1,5 @@
-from bot.config import Settings
-
-
-def main() -> None:
-    settings = Settings.from_env()
-    print(f"NovaAds AI ULTRA MAX configured for {len(settings.admin_ids)} admin(s).")
-
+import asyncio
+from bot import main
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
