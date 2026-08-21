@@ -8,13 +8,16 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from bot.admin import router as admin_router
 from bot.config import Settings
+from bot.db import init_db
 from bot.services.registry import build_catalog
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 settings = Settings.from_env()
 bot = Bot(settings.telegram_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+dp.include_router(admin_router)
 catalog = build_catalog()
 
 CATEGORIES = {
@@ -86,6 +89,7 @@ async def callbacks(callback: CallbackQuery) -> None:
 
 
 async def main() -> None:
+    await init_db(settings.database_url)
     logging.info("NovaAds starting with %d admins", len(settings.admin_ids))
     await dp.start_polling(bot)
 
