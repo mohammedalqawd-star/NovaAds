@@ -18,6 +18,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, FSInputFile, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from services.downloader import DownloadError, available_video_formats, cleanup, download_media, get_media_info
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data"
@@ -42,6 +43,12 @@ dp = Dispatcher()
 
 
 SERVICE_INFO = {
+    "media_downloader": {
+        "name": "⬇️ تنزيل الفيديو من الرابط",
+        "category": "media",
+        "desc": "تنزيل الوسائط من الروابط المدعومة عبر yt-dlp مع اختيار جودة الفيديو أو تنزيل الصوت MP3.",
+        "how": "اضغط بدء الخدمة، ثم أرسل رابط الفيديو. سيحلل NovaBiz الرابط ويجهز خيارات التنزيل المتاحة.",
+    },
     "compress_video": {
         "name": "📦 ضغط الفيديو",
         "category": "video",
@@ -122,6 +129,7 @@ IMAGE_SIZE_OPTIONS = {
 
 
 class Form(StatesGroup):
+    media_url = State()
     writer = State()
     waiting_media = State()
     waiting_payment = State()
@@ -414,6 +422,18 @@ async def start_tool(q: CallbackQuery, state: FSMContext):
     key = q.data.split(":", 1)[1]
     if key not in SERVICE_INFO:
         return await q.answer("الخدمة غير موجودة", show_alert=True)
+    if key == "media_downloader":
+        await state.clear()
+        await state.set_state(Form.media_url)
+        await q.message.answer(
+            "⏳ <b>جاري تجهيز العملية...</b>\n\n"
+            "⬇️ <b>تنزيل الفيديو من الرابط</b>\n\n"
+            "🔗 أرسل رابط الفيديو الآن.\n"
+            "📌 بعد إرسال الرابط سأحلله وأعرض لك الجودات المتاحة وخيار تنزيل الصوت MP3."
+        )
+        await q.answer()
+        return
+
     if key == "resize_video":
         await state.update_data(tool=key)
         await q.message.edit_text(
@@ -575,6 +595,213 @@ async def download_input(obj, work: Path) -> Path:
     src = work / "input.bin"
     await bot.download_file(info.file_path, src)
     return src
+
+
+@dp.message(Form.media_url)
+async def media_url_input(m: Message, state: FSMContext):
+    """استقبال رابط الوسائط وتحليل الجودات المتاحة."""
+    url = (m.text or "").strip()
+
+    if not url.startswith(("http://", "https://")):
+        return await m.answer(
+            "❌ أرسل رابطاً صحيحاً يبدأ بـ <code>http://</code> أو <code>https://</code>."
+        )
+
+    ensure_user(m.from_user.id, m.from_user.username)
+
+    progress = await m.answer(
+        "⏳ <b>جاري تحليل الرابط...</b>\n\n"
+        "🔎 يتم البحث عن الوسائط والجودات المتاحة."
+    )
+
+    try:
+        info = await get_media_info(url)
+
+        title = html.escape(str(info.get("title") or "بدون عنوان"))
+        formats = available_video_formats(info)
+
+        await state.update_data(
+            media_url=url,
+            media_formats=formats,
+            media_title=title,
+        )
+
+        b = InlineKeyboardBuilder()
+
+        # عرض أعلى الجودات المتاحة فقط لتجنب ازدحام الأزرار.
+        seen = set()
+        for fmt in reversed(formats):
+            height = fmt.get("height")
+            if not height or height in seen:
+                continue
+
+            seen.add(height)
+            b.button(
+                text=f"🎬 {height}p",
+                callback_data=f"mediaquality:{fmt['format_id']}",
+            )
+
+            if len(seen) >= 6:
+                break
+
+        b.button(
+            text="🎵 تنزيل الصوت MP3",
+            callback_data="mediaaudio",
+        )
+        b.button(
+            text="❌ إلغاء",
+            callback_data="media_cancel",
+        )
+        b.adjust(2, 1)
+
+        await progress.edit_text(
+            f"🎬 <b>{title}</b>\n\n"
+            "✅ تم تحليل الرابط بنجاح.\n"
+            "👇 اختر الجودة المطلوبة:",
+            reply_markup=b.as_markup(),
+        )
+
+    except DownloadError as e:
+        await state.clear()
+        await progress.edit_text(
+            "❌ <b>تعذر تحليل الرابط</b>\n\n"
+            f"السبب: {html.escape(str(e))}"
+        )
+
+
+@dp.callback_query(F.data.startswith("mediaquality:"))
+async def media_quality(q: CallbackQuery, state: FSMContext):
+    """تنزيل الفيديو بالجودة التي اختارها المستخدم."""
+    data = await state.get_data()
+    url = data.get("media_url")
+
+    if not url:
+        await state.clear()
+        return await q.answer("انتهت جلسة التنزيل، أرسل الرابط من جديد.", show_alert=True)
+
+    format_id = q.data.split(":", 1)[1]
+
+    ensure_user(q.from_user.id, q.from_user.username)
+
+    cost = 1
+    if not charge(q.from_user.id, cost):
+        await state.clear()
+        return await q.answer("❌ رصيدك غير كافٍ.", show_alert=True)
+
+    jid = job_start(q.from_user.id, "media_downloader", cost)
+
+    await q.message.edit_text(
+        "⏳ <b>جاري تجهيز العملية...</b>\n\n"
+        "⬇️ يتم تنزيل الفيديو الآن.\n"
+        "📦 قد يستغرق ذلك بعض الوقت حسب حجم الفيديو."
+    )
+
+    try:
+        result, workdir = await download_media(
+            url,
+            format_id=format_id,
+            audio_only=False,
+        )
+
+        if not result.exists() or result.stat().st_size == 0:
+            raise DownloadError("لم يتم إنشاء ملف الفيديو.")
+
+        job_end(jid, True)
+        await state.clear()
+
+        await q.message.answer_document(
+            FSInputFile(result),
+            caption=(
+                "✅ <b>تم تنزيل الفيديو بنجاح</b>\n"
+                f"🆔 Job: <code>{jid}</code>"
+            ),
+            reply_markup=main_kb(),
+        )
+
+        cleanup(workdir)
+
+    except Exception as e:
+        refund(q.from_user.id, cost)
+        job_end(jid, False, str(e))
+        await state.clear()
+
+        await q.message.answer(
+            "❌ <b>فشلت عملية التنزيل</b>\n\n"
+            "💳 تم إرجاع الرصيد لك تلقائياً.",
+            reply_markup=main_kb(),
+        )
+
+    await q.answer()
+
+
+@dp.callback_query(F.data == "mediaaudio")
+async def media_audio(q: CallbackQuery, state: FSMContext):
+    """تنزيل الصوت MP3 من الرابط."""
+    data = await state.get_data()
+    url = data.get("media_url")
+
+    if not url:
+        await state.clear()
+        return await q.answer("انتهت جلسة التنزيل، أرسل الرابط من جديد.", show_alert=True)
+
+    ensure_user(q.from_user.id, q.from_user.username)
+
+    cost = 1
+    if not charge(q.from_user.id, cost):
+        await state.clear()
+        return await q.answer("❌ رصيدك غير كافٍ.", show_alert=True)
+
+    jid = job_start(q.from_user.id, "media_downloader_audio", cost)
+
+    await q.message.edit_text(
+        "⏳ <b>جاري تجهيز العملية...</b>\n\n"
+        "🎵 يتم استخراج الصوت وتحويله إلى MP3."
+    )
+
+    try:
+        result, workdir = await download_media(
+            url,
+            audio_only=True,
+        )
+
+        if not result.exists() or result.stat().st_size == 0:
+            raise DownloadError("لم يتم إنشاء ملف الصوت.")
+
+        job_end(jid, True)
+        await state.clear()
+
+        await q.message.answer_audio(
+            FSInputFile(result),
+            caption=(
+                "✅ <b>تم استخراج الصوت بنجاح</b>\n"
+                f"🆔 Job: <code>{jid}</code>"
+            ),
+        )
+
+        cleanup(workdir)
+
+    except Exception as e:
+        refund(q.from_user.id, cost)
+        job_end(jid, False, str(e))
+        await state.clear()
+
+        await q.message.answer(
+            "❌ <b>فشلت عملية التنزيل</b>\n\n"
+            "💳 تم إرجاع الرصيد لك تلقائياً.",
+            reply_markup=main_kb(),
+        )
+
+    await q.answer()
+
+
+@dp.callback_query(F.data == "media_cancel")
+async def media_cancel(q: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await q.message.edit_text(
+        "❌ تم إلغاء عملية التنزيل.",
+        reply_markup=main_kb(),
+    )
+    await q.answer()
 
 
 @dp.message(Form.waiting_media)
