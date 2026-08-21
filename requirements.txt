@@ -1,5 +1,7 @@
-aiogram>=3.7.0
-python-dotenv>=1.0.0
-aiosqlite>=0.20.0
-apscheduler>=3.10.4
-pytz>=2024.1
+aiogram>=3.20,<4
+SQLAlchemy>=2.0,<3
+aiosqlite>=0.20,<1
+redis>=6,<7
+pydantic-settings>=2.8,<3
+pytest>=8,<9
+pytest-asyncio>=1,<2
