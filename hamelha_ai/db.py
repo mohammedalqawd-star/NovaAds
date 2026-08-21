@@ -1,5 +1,6 @@
 import os, sqlite3, asyncio, secrets
 from .config import settings
+
 class DB:
     def __init__(self):
         self.path=settings.database_url.replace("sqlite:///",""); os.makedirs(os.path.dirname(self.path) or ".",exist_ok=True)
@@ -16,6 +17,7 @@ class DB:
                 row=c.execute("SELECT id,username,credits,referrals,referral_code FROM users WHERE id=?",(uid,)).fetchone()
                 if not row:
                     code=secrets.token_urlsafe(6).replace('-','').replace('_',''); c.execute("INSERT INTO users(id,username,credits,referral_code) VALUES(?,?,?,?)",(uid,username or "",settings.free_credits,code)); c.commit(); return (uid,username or "",settings.free_credits,0,code)
+                if username is not None: c.execute("UPDATE users SET username=? WHERE id=?",(username,uid)); c.commit(); row=(row[0],username,row[2],row[3],row[4])
                 return row
         return await asyncio.to_thread(work)
     async def spend(self,uid):
@@ -27,6 +29,15 @@ class DB:
         def work():
             with sqlite3.connect(self.path) as c: c.execute("UPDATE users SET credits=credits+? WHERE id=?",(n,uid)); c.commit()
         await asyncio.to_thread(work)
+    async def apply_referral(self,uid,code):
+        def work():
+            with sqlite3.connect(self.path) as c:
+                me=c.execute("SELECT referred_by FROM users WHERE id=?",(uid,)).fetchone()
+                if not me or me[0] is not None: return False
+                owner=c.execute("SELECT id FROM users WHERE referral_code=?",(code,)).fetchone()
+                if not owner or owner[0]==uid: return False
+                c.execute("UPDATE users SET referred_by=? WHERE id=?",(owner[0],uid)); c.execute("UPDATE users SET referrals=referrals+1,credits=credits+2 WHERE id=?",(owner[0],)); c.commit(); return True
+        return await asyncio.to_thread(work)
     async def job(self,uid,kind,inp,out=None,status="queued",error=None):
         def work():
             with sqlite3.connect(self.path) as c:
