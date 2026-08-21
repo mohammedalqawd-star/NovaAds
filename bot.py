@@ -340,9 +340,26 @@ async def home(q: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("cat:"))
 async def category(q: CallbackQuery):
     cat = q.data.split(":", 1)[1]
+    lines = [f"<b>{category_title(cat)}</b>", "", "🛠️ <b>الخدمات المتاحة:</b>", ""]
+
+    for key in category_tools(cat):
+        if key == "ai_writer":
+            lines.append(
+                "✍️ <b>مولد المحتوى</b>\n"
+                "إنشاء نصوص تسويقية ومنشورات وأوصاف وهاشتاقات من فكرتك."
+            )
+        elif key in SERVICE_INFO:
+            info = SERVICE_INFO[key]
+            lines.append(
+                f"{info['name']}\n"
+                f"{info['desc']}"
+            )
+        lines.append("")
+
+    lines.append("👇 اضغط على اسم الخدمة لعرض شرحها الكامل وطريقة استخدامها.")
+
     await q.message.edit_text(
-        f"<b>{category_title(cat)}</b>\n\n"
-        "اختر الخدمة. عند فتح أي خدمة ستجد: ماذا تفعل، كيف تستخدمها، ثم زر بدء التنفيذ.",
+        "\n".join(lines),
         reply_markup=category_kb(cat),
     )
     await q.answer()
