@@ -1,27 +1,38 @@
 # Hamelha AI Studio 🚀
 
-Telegram video automation platform.
+Telegram video studio: text → video, images → video, video formatting, MP3 extraction and URL downloads.
 
-## Included now
-- Text → vertical MP4 video with Arabic/Unicode text slides.
-- Images → slideshow video (9:16).
-- Video → Shorts/Reels 9:16 conversion.
-- Video → MP3 extraction engine.
-- URL → video download through yt-dlp.
-- User credits and job history in SQLite.
-- Docker image with FFmpeg.
+## Features
+- ✍️ Text → vertical video with Arabic TTS
+- 🖼️ Up to 40 images → MP4
+- 🎬 Shorts 9:16 / square 1:1 / landscape processing
+- 🎵 Video → MP3
+- ⬇️ URL → video with yt-dlp
+- 🎁 Free credits
+- 👥 Referral code storage
+- 📊 Admin statistics
+- 🔐 Secrets via environment variables
 
 ## Run
-1. Install Python 3.12+ and FFmpeg.
-2. `pip install -r hamelha_ai/requirements.txt`
-3. Copy `.env.example` to `.env` and set `BOT_TOKEN` and `ADMIN_ID`.
-4. Run: `python -m hamelha_ai.bot`
+Install Python 3.11+, FFmpeg, then:
+
+```bash
+pip install -r hamelha_ai/requirements.txt
+python -m hamelha_ai.bot
+```
+
+Required environment variables:
+- `BOT_TOKEN` — Telegram BotFather token
+- `ADMIN_ID` — your Telegram numeric ID
+- Optional: `FREE_CREDITS`, `DATABASE_URL`, `WORK_DIR`, `MAX_UPLOAD_MB`, `FFMPEG`
+
+Never commit `.env`, bot tokens, payment credentials, or private keys.
 
 ## Production
-Use a VPS or a cloud worker/container service. GitHub stores the code; it does not itself keep a Telegram bot running 24/7. A free tier may sleep, have CPU/storage limits, or expire, so 24/7 availability is not guaranteed by the free tier.
+GitHub stores the code; it does not itself keep a Telegram bot running 24/7. Use a compatible always-on server/container worker. Free hosting tiers can sleep or impose CPU, storage, runtime, or bandwidth limits.
 
 ## Monetization
-The code has a credit system. Add your approved payment method and package amounts in a payment handler before accepting money. Do not put payment credentials or bot tokens in GitHub files; use environment secrets.
+The project has credits and referral infrastructure. A real payment handler should only be enabled after choosing an approved payment method; payment credentials belong in environment secrets, never in GitHub.
 
-## Important
-Only download or process content you have the right to use. Platform rules and copyright restrictions still apply.
+## Content
+Only download/process content you have the right to use and follow the rules of the source platforms.
