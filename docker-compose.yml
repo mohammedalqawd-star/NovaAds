@@ -1,0 +1,8 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    depends_on:
+      - redis
+  redis:
+    image: redis:7-alpine
