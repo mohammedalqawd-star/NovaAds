@@ -1,0 +1,1 @@
+"""NovaAds service layer."""
