@@ -15,6 +15,7 @@ def setup_db(path: Path):
             INSERT INTO services VALUES ('video', 'Video', 'video', 1, 1);
             INSERT INTO services VALUES ('disabled', 'Disabled', 'video', 0, 1);
             INSERT INTO payments(user_id, amount, proof, status) VALUES (1, 5, 'proof', 'pending');
+            """
         )
 
 
