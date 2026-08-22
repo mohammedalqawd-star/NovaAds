@@ -33,13 +33,16 @@ from services.mega_tools import (
     image_grayscale, image_jpg, image_resize, image_sharpen, image_webp,
     mirror_video, resize_video, sharpen_video, speed_video, video_snapshot,
 )
+from services.video_intelligence import VideoIntelligenceError, analyze_video
 
 
 class ProForm(StatesGroup):
     waiting_file = State()
+    waiting_video_ai = State()
 
 
 PRO_SERVICES = {
+    "video_ai": ("🧠 فهم الفيديو + Caption + 5 Hashtags", "video"),
     "compress": ("📦 ضغط فيديو سريع", "video"),
     "convert": ("🔄 تحويل فيديو عالي الجودة", "video"),
     "resize": ("📐 تغيير مقاس الفيديو", "video"),
@@ -134,6 +137,7 @@ async def pro_menu(message: Message):
     await message.answer(
         "<b>⚡ NovaBiz Pro Studio</b>\n\n"
         "🚀 خدمات معالجة حقيقية وسريعة عبر FFmpeg.\n"
+        "🧠 تحليل فيديو بالذكاء الاصطناعي وإنشاء محتوى للنشر.\n"
         "🎯 فيديو + صوت + صور في لوحة واحدة.\n"
         "📤 النتيجة تُرسل مباشرة بعد اكتمال المعالجة.\n\n"
         "اختر الخدمة:", reply_markup=pro_kb())
@@ -151,12 +155,84 @@ async def pro_start(query: CallbackQuery, state: FSMContext):
     key = query.data.split(":", 1)[1]
     if key not in PRO_SERVICES:
         return await query.answer("الخدمة غير موجودة", show_alert=True)
+    await state.clear()
     await state.update_data(pro_service=key)
-    await state.set_state(ProForm.waiting_file)
-    label = PRO_SERVICES[key][0]
-    prompt = "📤 أرسل الملف للحصول على معلوماته." if key == "info" else "📤 أرسل الملف الآن وسيبدأ التنفيذ مباشرة."
-    await query.message.edit_text(f"<b>{html.escape(label)}</b>\n\n{prompt}\n\n⚡ المعالجة محسّنة للسرعة.")
+    if key == "video_ai":
+        await state.set_state(ProForm.waiting_video_ai)
+        await query.message.edit_text(
+            "<b>🧠 فهم الفيديو + تجهيز المحتوى</b>\n\n"
+            "📤 أرسل الفيديو الآن.\n\n"
+            "سيتم تحليل لقطات حقيقية من الفيديو ثم إنشاء:\n"
+            "📝 Caption مناسب\n"
+            "👤 Bio/وصف مناسب للنشر\n"
+            "#️⃣ خمسة هاشتاقات مرتبطة بالمحتوى\n"
+            "🎯 الموضوع والجمهور والأسلوب\n"
+            "🪝 Hook و CTA\n\n"
+            "⚡ ستصلك النتيجة بعد التحليل."
+        )
+    else:
+        await state.set_state(ProForm.waiting_file)
+        label = PRO_SERVICES[key][0]
+        prompt = "📤 أرسل الملف للحصول على معلوماته." if key == "info" else "📤 أرسل الملف الآن وسيبدأ التنفيذ مباشرة."
+        await query.message.edit_text(f"<b>{html.escape(label)}</b>\n\n{prompt}\n\n⚡ المعالجة محسّنة للسرعة.")
     await query.answer()
+
+
+@app.dp.message(ProForm.waiting_video_ai)
+async def video_ai_file(message: Message, state: FSMContext):
+    app.ensure_user(message.from_user.id, message.from_user.username)
+    cost = 1
+    if not app.charge(message.from_user.id, cost):
+        await state.clear()
+        return await message.answer("❌ رصيدك غير كافٍ.", reply_markup=app.main_kb())
+
+    jid = app.job_start(message.from_user.id, "pro_video_intelligence", cost)
+    progress = await message.answer(
+        "⏳ <b>جاري فهم الفيديو...</b>\n\n"
+        "🎞️ استخراج لقطات ممثلة\n"
+        "🧠 تحليل المحتوى\n"
+        "📝 تجهيز النص والهاشتاقات..."
+    )
+    workdir = Path(tempfile.mkdtemp(prefix="novabiz_video_ai_input_"))
+    frames_dir: Path | None = None
+    try:
+        src = await save_input(message, workdir)
+        result, frames, frames_dir = await analyze_video(src, frame_count=6)
+        hashtags = result.get("hashtags", [])[:5]
+        tags = " ".join(str(x) for x in hashtags)
+        text = (
+            "<b>🧠 تحليل الفيديو مكتمل</b>\n\n"
+            f"🎯 <b>الموضوع:</b> {html.escape(str(result.get('topic', 'غير محدد')))}\n"
+            f"👥 <b>الجمهور:</b> {html.escape(str(result.get('audience', 'غير محدد')))}\n"
+            f"🎭 <b>الأسلوب:</b> {html.escape(str(result.get('tone', 'غير محدد')))}\n"
+            f"⏱️ <b>المدة:</b> {html.escape(str(result.get('duration', '?')))} ثانية\n"
+            f"📐 <b>الدقة:</b> {html.escape(str(result.get('resolution', '?')))}\n\n"
+            f"📝 <b>Caption:</b>\n{html.escape(str(result.get('caption', '')))}\n\n"
+            f"👤 <b>Bio / الوصف:</b>\n{html.escape(str(result.get('bio', '')))}\n\n"
+            f"🪝 <b>Hook:</b> {html.escape(str(result.get('hook', '')))}\n"
+            f"📣 <b>CTA:</b> {html.escape(str(result.get('cta', '')))}\n\n"
+            f"#️⃣ <b>الهاشتاقات:</b>\n{html.escape(tags)}\n\n"
+            f"🆔 Job: <code>{jid}</code>"
+        )
+        app.job_end(jid, True)
+        await state.clear()
+        await progress.edit_text(text, reply_markup=app.main_kb())
+        if frames:
+            await message.answer_photo(FSInputFile(frames[0]), caption="🖼️ لقطة مقترحة كغلاف")
+    except Exception as exc:
+        app.refund(message.from_user.id, cost)
+        app.job_end(jid, False, str(exc))
+        await state.clear()
+        await progress.edit_text(
+            "❌ <b>فشل تحليل الفيديو</b>\n\n"
+            f"السبب: {html.escape(str(exc))}\n\n"
+            "💳 تم إرجاع الرصيد تلقائياً.",
+            reply_markup=app.main_kb(),
+        )
+    finally:
+        if frames_dir:
+            shutil.rmtree(frames_dir, ignore_errors=True)
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 async def run_service(service: str, src: Path) -> ToolResult | None:
