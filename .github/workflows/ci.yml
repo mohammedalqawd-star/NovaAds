@@ -17,6 +17,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Compile
-        run: python -m compileall bot.py app.py bot
+        run: python -m compileall bot.py app.py bot run_upgraded.py services
       - name: Tests
         run: pytest -q
