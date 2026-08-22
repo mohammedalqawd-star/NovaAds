@@ -142,23 +142,18 @@ async def image_blur(src: Path) -> ToolResult:
 
 
 async def audio_volume(src: Path, factor: float = 1.5) -> ToolResult:
+    """Video volume service: preserve video and modify only its audio."""
     _check_input(src)
     if not 0.25 <= factor <= 3:
         raise ToolError("مستوى الصوت يجب أن يكون بين 0.25x و3x.")
     work = _work("volume")
-    out = work / "volume.mp3"
-    await _ffmpeg(["-i", str(src), "-vn", "-af", f"volume={factor:g}", "-c:a", "libmp3lame", "-q:a", "2", str(out)])
+    out = work / "volume.mp4"
+    await _ffmpeg(["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-af", f"volume={factor:g}", "-movflags", "+faststart", str(out)])
     return _result(work, out)
 
 
 async def video_volume(src: Path, factor: float = 1.5) -> ToolResult:
-    _check_input(src)
-    if not 0.25 <= factor <= 3:
-        raise ToolError("مستوى الصوت يجب أن يكون بين 0.25x و3x.")
-    work = _work("video_volume")
-    out = work / "video_volume.mp4"
-    await _ffmpeg(["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-af", f"volume={factor:g}", "-movflags", "+faststart", str(out)])
-    return _result(work, out)
+    return await audio_volume(src, factor)
 
 
 async def audio_wav(src: Path) -> ToolResult:
