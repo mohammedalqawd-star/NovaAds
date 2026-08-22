@@ -71,8 +71,12 @@ def pro_kb():
     return b.as_markup()
 
 
+# احتفظ بالمرجع الأصلي قبل استبدال main_kb لتجنب الاستدعاء الذاتي.
+_original_main_kb = app.main_kb
+
+
 def pro_home_kb():
-    original = app.main_kb()
+    original = _original_main_kb()
     rows = [list(row) for row in original.inline_keyboard]
     rows.insert(0, [])
     rows[0].append(__import__("aiogram").types.InlineKeyboardButton(text="⚡ Pro Studio", callback_data="pro_menu"))
