@@ -11,7 +11,7 @@ from pathlib import Path
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 BASE = Path(__file__).resolve().parent
@@ -24,21 +24,14 @@ sys.modules["novabiz_app"] = app
 spec.loader.exec_module(app)
 
 from services.advanced_tools import (
-    ToolError,
-    ToolResult,
-    cleanup,
-    compress_video,
-    convert_audio,
-    convert_video,
-    extract_audio,
-    extract_frames,
-    make_gif,
-    make_thumbnail,
-    media_info,
-    mute_video,
-    normalize_audio,
-    rotate_video,
-    web_optimize,
+    ToolError, ToolResult, cleanup, compress_video, convert_audio, convert_video,
+    extract_audio, extract_frames, make_gif, make_thumbnail, media_info,
+    mute_video, normalize_audio, rotate_video, web_optimize,
+)
+from services.mega_tools import (
+    audio_m4a, audio_volume, audio_wav, grayscale_video, image_blur,
+    image_grayscale, image_jpg, image_resize, image_sharpen, image_webp,
+    mirror_video, resize_video, sharpen_video, speed_video, video_snapshot,
 )
 
 
@@ -47,18 +40,33 @@ class ProForm(StatesGroup):
 
 
 PRO_SERVICES = {
-    "compress": ("📦 ضغط فيديو Pro", "video"),
+    "compress": ("📦 ضغط فيديو سريع", "video"),
     "convert": ("🔄 تحويل فيديو عالي الجودة", "video"),
-    "gif": ("🎞️ تحويل فيديو إلى GIF", "video"),
-    "thumbnail": ("🖼️ استخراج صورة غلاف HD", "video"),
-    "frames": ("🎬 استخراج لقطات ذكية", "video"),
+    "resize": ("📐 تغيير مقاس الفيديو", "video"),
+    "speed": ("⚡ تغيير سرعة الفيديو", "video"),
+    "mirror": ("🪞 عكس الفيديو", "video"),
+    "grayvideo": ("⚫ فيديو أبيض وأسود", "video"),
+    "sharpenvideo": ("✨ تحسين حدة الفيديو", "video"),
+    "snapshot": ("📸 لقطة من الفيديو", "video"),
+    "gif": ("🎞️ فيديو إلى GIF", "video"),
+    "thumbnail": ("🖼️ غلاف HD", "video"),
+    "frames": ("🎬 استخراج لقطات", "video"),
     "mute": ("🔇 إزالة صوت الفيديو", "video"),
-    "web": ("🌐 تجهيز الفيديو للنشر", "video"),
+    "web": ("🌐 تجهيز للنشر السريع", "video"),
     "rotate": ("🔃 تدوير الفيديو", "video"),
-    "extract_audio": ("🎵 استخراج الصوت MP3", "audio"),
-    "convert_audio": ("🎧 تحويل الصوت إلى MP3", "audio"),
+    "extract_audio": ("🎵 استخراج MP3", "audio"),
+    "convert_audio": ("🎧 تحويل إلى MP3", "audio"),
     "normalize": ("🎚️ تحسين مستوى الصوت", "audio"),
+    "volume": ("🔊 رفع/خفض الصوت", "audio"),
+    "wav": ("🎙️ تحويل إلى WAV", "audio"),
+    "m4a": ("🎼 تحويل إلى M4A", "audio"),
     "info": ("🔎 معلومات الملف الدقيقة", "all"),
+    "imageresize": ("🖼️ تغيير مقاس الصورة", "image"),
+    "jpg": ("📷 تحويل الصورة إلى JPG", "image"),
+    "webp": ("🌐 تحويل الصورة إلى WebP", "image"),
+    "imagegray": ("⚫ صورة أبيض وأسود", "image"),
+    "imagesharp": ("✨ تحسين حدة الصورة", "image"),
+    "imageblur": ("🌫️ تمويه الصورة", "image"),
 }
 
 
@@ -71,19 +79,16 @@ def pro_kb():
     return b.as_markup()
 
 
-# احتفظ بالمرجع الأصلي قبل استبدال main_kb لتجنب الاستدعاء الذاتي.
 _original_main_kb = app.main_kb
 
 
 def pro_home_kb():
     original = _original_main_kb()
     rows = [list(row) for row in original.inline_keyboard]
-    rows.insert(0, [])
-    rows[0].append(__import__("aiogram").types.InlineKeyboardButton(text="⚡ Pro Studio", callback_data="pro_menu"))
+    rows.insert(0, [InlineKeyboardButton(text="⚡ Pro Studio", callback_data="pro_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-# اجعل زر Pro Studio يظهر في لوحة NovaBiz الرئيسية بدون كسر الخدمات الأصلية.
 app.main_kb = pro_home_kb
 
 
@@ -105,22 +110,22 @@ async def save_input(message: Message, workdir: Path) -> Path:
 
 
 async def send_result(message: Message, result: ToolResult, service: str, jid: str):
+    suffix = result.path.suffix.lower()
+    caption = f"✅ <b>{html.escape(PRO_SERVICES[service][0])}</b>\n🆔 Job: <code>{jid}</code>"
     if service == "frames":
         frames = sorted(result.workdir.glob("frame_*.jpg"))
         for frame in frames:
             await message.answer_photo(FSInputFile(frame))
         await message.answer(f"✅ تم استخراج {len(frames)} لقطات\n🆔 Job: <code>{jid}</code>", reply_markup=app.main_kb())
         return
-    if service in {"normalize", "extract_audio", "convert_audio"}:
-        await message.answer_audio(FSInputFile(result.path), caption=f"✅ {PRO_SERVICES[service][0]}\n🆔 Job: <code>{jid}</code>", reply_markup=app.main_kb())
-        return
-    if result.path.suffix.lower() in {".jpg", ".jpeg", ".png"}:
-        await message.answer_photo(FSInputFile(result.path), caption=f"✅ تم تجهيز الصورة\n🆔 Job: <code>{jid}</code>", reply_markup=app.main_kb())
-        return
-    if result.path.suffix.lower() == ".gif":
-        await message.answer_document(FSInputFile(result.path), caption=f"✅ تم إنشاء GIF\n🆔 Job: <code>{jid}</code>", reply_markup=app.main_kb())
-        return
-    await message.answer_video(FSInputFile(result.path), caption=f"✅ {PRO_SERVICES[service][0]}\n🆔 Job: <code>{jid}</code>", reply_markup=app.main_kb())
+    if suffix in {".jpg", ".jpeg", ".png", ".webp"}:
+        await message.answer_photo(FSInputFile(result.path), caption=caption, reply_markup=app.main_kb())
+    elif suffix in {".mp3", ".wav", ".m4a"}:
+        await message.answer_audio(FSInputFile(result.path), caption=caption, reply_markup=app.main_kb())
+    elif suffix == ".gif":
+        await message.answer_document(FSInputFile(result.path), caption=caption, reply_markup=app.main_kb())
+    else:
+        await message.answer_video(FSInputFile(result.path), caption=caption, reply_markup=app.main_kb())
 
 
 @app.dp.message(F.text.in_({"/pro", "/tools"}))
@@ -128,21 +133,16 @@ async def pro_menu(message: Message):
     app.ensure_user(message.from_user.id, message.from_user.username)
     await message.answer(
         "<b>⚡ NovaBiz Pro Studio</b>\n\n"
-        "🛠️ أدوات معالجة حقيقية عبر FFmpeg/ffprobe.\n"
-        "📦 معالجة محلية للملفات بدون رفعها لخدمة خارجية.\n"
-        "💳 كل عملية تسجل في سجل الوظائف، ويعاد الرصيد تلقائياً عند الفشل.\n\n"
-        "اختر الخدمة:",
-        reply_markup=pro_kb(),
-    )
+        "🚀 خدمات معالجة حقيقية وسريعة عبر FFmpeg.\n"
+        "🎯 فيديو + صوت + صور في لوحة واحدة.\n"
+        "📤 النتيجة تُرسل مباشرة بعد اكتمال المعالجة.\n\n"
+        "اختر الخدمة:", reply_markup=pro_kb())
 
 
 @app.dp.callback_query(F.data == "pro_menu")
 async def pro_menu_button(query: CallbackQuery):
     app.ensure_user(query.from_user.id, query.from_user.username)
-    await query.message.edit_text(
-        "<b>⚡ NovaBiz Pro Studio</b>\n\nاختر الأداة التي تريد تشغيلها:",
-        reply_markup=pro_kb(),
-    )
+    await query.message.edit_text("<b>⚡ NovaBiz Pro Studio</b>\n\nاختر الأداة التي تريد تشغيلها:", reply_markup=pro_kb())
     await query.answer()
 
 
@@ -154,9 +154,39 @@ async def pro_start(query: CallbackQuery, state: FSMContext):
     await state.update_data(pro_service=key)
     await state.set_state(ProForm.waiting_file)
     label = PRO_SERVICES[key][0]
-    prompt = "📤 أرسل الملف الآن للحصول على معلوماته." if key == "info" else "📤 أرسل الفيديو أو الملف الآن."
-    await query.message.edit_text(f"<b>{html.escape(label)}</b>\n\n{prompt}\n\n⏳ عند وصول الملف يبدأ التنفيذ مباشرة.")
+    prompt = "📤 أرسل الملف للحصول على معلوماته." if key == "info" else "📤 أرسل الملف الآن وسيبدأ التنفيذ مباشرة."
+    await query.message.edit_text(f"<b>{html.escape(label)}</b>\n\n{prompt}\n\n⚡ المعالجة محسّنة للسرعة.")
     await query.answer()
+
+
+async def run_service(service: str, src: Path) -> ToolResult | None:
+    if service == "compress": return await compress_video(src, crf=26)
+    if service == "convert": return await convert_video(src)
+    if service == "resize": return await resize_video(src, 1080, 1920)
+    if service == "speed": return await speed_video(src, 1.5)
+    if service == "mirror": return await mirror_video(src)
+    if service == "grayvideo": return await grayscale_video(src)
+    if service == "sharpenvideo": return await sharpen_video(src)
+    if service == "snapshot": return await video_snapshot(src, 1.0)
+    if service == "gif": return await make_gif(src)
+    if service == "thumbnail": return await make_thumbnail(src)
+    if service == "frames": return await extract_frames(src)
+    if service == "mute": return await mute_video(src)
+    if service == "web": return await web_optimize(src)
+    if service == "rotate": return await rotate_video(src)
+    if service == "extract_audio": return await extract_audio(src)
+    if service == "convert_audio": return await convert_audio(src)
+    if service == "normalize": return await normalize_audio(src)
+    if service == "volume": return await audio_volume(src)
+    if service == "wav": return await audio_wav(src)
+    if service == "m4a": return await audio_m4a(src)
+    if service == "imageresize": return await image_resize(src, 1080, 1080)
+    if service == "jpg": return await image_jpg(src)
+    if service == "webp": return await image_webp(src)
+    if service == "imagegray": return await image_grayscale(src)
+    if service == "imagesharp": return await image_sharpen(src)
+    if service == "imageblur": return await image_blur(src)
+    return None
 
 
 @app.dp.message(ProForm.waiting_file)
@@ -174,35 +204,12 @@ async def pro_file(message: Message, state: FSMContext):
         return await message.answer("❌ رصيدك غير كافٍ.", reply_markup=app.main_kb())
 
     jid = app.job_start(message.from_user.id, f"pro_{service}", cost)
-    progress = await message.answer("⏳ <b>جاري تجهيز العملية...</b>\n\n⚙️ تتم معالجة الملف الآن.")
+    progress = await message.answer("⏳ <b>جاري تجهيز العملية...</b>\n\n⚙️ المعالجة تعمل الآن...")
     input_workdir = Path(tempfile.mkdtemp(prefix="novabiz_pro_input_"))
     result: ToolResult | None = None
-
     try:
         src = await save_input(message, input_workdir)
-        if service == "compress":
-            result = await compress_video(src)
-        elif service == "convert":
-            result = await convert_video(src)
-        elif service == "gif":
-            result = await make_gif(src)
-        elif service == "thumbnail":
-            result = await make_thumbnail(src)
-        elif service == "frames":
-            result = await extract_frames(src)
-        elif service == "mute":
-            result = await mute_video(src)
-        elif service == "web":
-            result = await web_optimize(src)
-        elif service == "rotate":
-            result = await rotate_video(src)
-        elif service == "extract_audio":
-            result = await extract_audio(src)
-        elif service == "convert_audio":
-            result = await convert_audio(src)
-        elif service == "normalize":
-            result = await normalize_audio(src)
-        elif service == "info":
+        if service == "info":
             details = media_info(src)
             app.job_end(jid, True)
             await state.clear()
@@ -212,31 +219,20 @@ async def pro_file(message: Message, state: FSMContext):
                 f"⏱️ المدة: {html.escape(details.get('duration', 'غير متاح'))} ثانية\n"
                 f"🎞️ الصيغة: {html.escape(details.get('format_name', 'غير متاح'))}\n"
                 f"📡 Bitrate: {html.escape(details.get('bit_rate', 'غير متاح'))}\n\n"
-                f"🆔 Job: <code>{jid}</code>",
-                reply_markup=app.main_kb(),
-            )
+                f"🆔 Job: <code>{jid}</code>", reply_markup=app.main_kb())
             return
-        else:
-            raise ToolError("الخدمة غير مفعلة.")
-
+        result = await run_service(service, src)
         if result is None:
-            raise ToolError("لم يتم إنشاء الناتج.")
-
+            raise ToolError("الخدمة غير مفعلة.")
         app.job_end(jid, True)
         await state.clear()
-        await progress.edit_text("✅ <b>اكتملت المعالجة بنجاح.</b>\n\n📤 إرسال الناتج...")
+        await progress.edit_text("✅ <b>اكتملت المعالجة.</b>\n\n📤 إرسال الناتج الآن...")
         await send_result(message, result, service, jid)
-
     except Exception as exc:
         app.refund(message.from_user.id, cost)
         app.job_end(jid, False, str(exc))
         await state.clear()
-        await progress.edit_text(
-            "❌ <b>فشلت العملية</b>\n\n"
-            f"السبب: {html.escape(str(exc))}\n\n"
-            "💳 تم إرجاع الرصيد لك تلقائياً.",
-            reply_markup=app.main_kb(),
-        )
+        await progress.edit_text("❌ <b>فشلت العملية</b>\n\n" + f"السبب: {html.escape(str(exc))}\n\n💳 تم إرجاع الرصيد تلقائياً.", reply_markup=app.main_kb())
     finally:
         if result is not None:
             cleanup(result)
