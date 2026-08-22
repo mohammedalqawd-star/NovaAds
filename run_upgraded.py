@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import html
+import importlib.util
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -12,7 +14,17 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, FSInputFile, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-import bot as app
+# حمّل bot.py من نفس مجلد المشروع بشكل صريح، حتى لا يتم التقاط أي module
+# آخر اسمه bot من البيئة.
+BASE = Path(__file__).resolve().parent
+BOT_PATH = BASE / "bot.py"
+spec = importlib.util.spec_from_file_location("novabiz_app", BOT_PATH)
+if spec is None or spec.loader is None:
+    raise RuntimeError(f"تعذر تحميل {BOT_PATH}")
+app = importlib.util.module_from_spec(spec)
+sys.modules["novabiz_app"] = app
+spec.loader.exec_module(app)
+
 from services.advanced_tools import (
     ToolError,
     ToolResult,
@@ -90,7 +102,7 @@ async def pro_menu(message: Message):
     app.ensure_user(message.from_user.id, message.from_user.username)
     await message.answer(
         "<b>⚡ NovaBiz Pro Studio</b>\n\n"
-        "مجموعة خدمات معالجة محلية عبر FFmpeg/ffprobe، بدون ادعاء ذكاء اصطناعي غير موجود.\n\n"
+        "خدمات معالجة محلية عبر FFmpeg/ffprobe.\n\n"
         "اختر الخدمة:",
         reply_markup=pro_kb(),
     )
@@ -101,20 +113,11 @@ async def pro_start(query: CallbackQuery, state: FSMContext):
     key = query.data.split(":", 1)[1]
     if key not in PRO_SERVICES:
         return await query.answer("الخدمة غير موجودة", show_alert=True)
-
     await state.update_data(pro_service=key)
     await state.set_state(ProForm.waiting_file)
-
-    if key == "info":
-        prompt = "📤 أرسل الملف للحصول على معلوماته الفنية."
-    elif key == "normalize":
-        prompt = "🎙️ أرسل ملف الصوت أو الفيديو لتحسين مستوى الصوت."
-    else:
-        prompt = "📤 أرسل الفيديو الآن."
-
+    prompt = "📤 أرسل الملف الآن للحصول على معلوماته." if key == "info" else "📤 أرسل الفيديو أو الملف الآن."
     await query.message.edit_text(
-        f"<b>{PRO_SERVICES[key]}</b>\n\n{prompt}\n\n"
-        f"💎 التكلفة: عملية واحدة",
+        f"<b>{PRO_SERVICES[key]}</b>\n\n{prompt}\n\n💎 التكلفة: عملية واحدة"
     )
     await query.answer()
 
@@ -140,7 +143,6 @@ async def pro_file(message: Message, state: FSMContext):
 
     try:
         src = await save_input(message, input_workdir)
-
         if service == "compress":
             result = await compress_video(src)
         elif service == "gif":
@@ -155,19 +157,19 @@ async def pro_file(message: Message, state: FSMContext):
             details = media_info(src)
             app.job_end(jid, True)
             await state.clear()
-            text = (
+            await progress.edit_text(
                 "<b>🔎 معلومات الملف</b>\n\n"
                 f"📦 الحجم: {details.get('size', 'غير متاح')} bytes\n"
                 f"⏱️ المدة: {details.get('duration', 'غير متاح')} ثانية\n"
                 f"🎞️ الصيغة: {html.escape(details.get('format_name', 'غير متاح'))}\n\n"
-                f"🆔 Job: <code>{jid}</code>"
+                f"🆔 Job: <code>{jid}</code>",
+                reply_markup=app.main_kb(),
             )
-            await progress.edit_text(text, reply_markup=app.main_kb())
             return
         else:
             raise ToolError("الخدمة غير مفعلة.")
 
-        if result is None or not result.path.exists() and result.path.name != "frame_%02d.jpg":
+        if result is None:
             raise ToolError("لم يتم إنشاء الناتج.")
 
         app.job_end(jid, True)
