@@ -34,6 +34,7 @@ from services.mega_tools import (
     mirror_video, resize_video, sharpen_video, speed_video, video_snapshot,
 )
 from services.video_intelligence import analyze_video
+from services.studio_catalog import STUDIO_CATEGORIES
 
 
 class ProForm(StatesGroup):
@@ -41,76 +42,34 @@ class ProForm(StatesGroup):
     waiting_video_ai = State()
 
 
-PRO_SERVICES = {
-    "video_ai": ("🧠 فهم الفيديو + Caption + 5 Hashtags", "video"),
-    "compress": ("📦 ضغط فيديو سريع", "video"),
-    "convert": ("🔄 تحويل فيديو عالي الجودة", "video"),
-    "resize": ("📐 تغيير مقاس الفيديو", "video"),
-    "speed": ("⚡ تغيير سرعة الفيديو", "video"),
-    "mirror": ("🪞 عكس الفيديو", "video"),
-    "grayvideo": ("⚫ فيديو أبيض وأسود", "video"),
-    "sharpenvideo": ("✨ تحسين حدة الفيديو", "video"),
-    "snapshot": ("📸 لقطة من الفيديو", "video"),
-    "gif": ("🎞️ فيديو إلى GIF", "video"),
-    "thumbnail": ("🖼️ غلاف HD", "video"),
-    "frames": ("🎬 استخراج لقطات", "video"),
-    "mute": ("🔇 إزالة صوت الفيديو", "video"),
-    "web": ("🌐 تجهيز للنشر السريع", "video"),
-    "rotate": ("🔃 تدوير الفيديو", "video"),
-    "extract_audio": ("🎵 استخراج MP3", "audio"),
-    "convert_audio": ("🎧 تحويل إلى MP3", "audio"),
-    "normalize": ("🎚️ تحسين مستوى الصوت", "audio"),
-    "volume": ("🔊 رفع/خفض الصوت", "audio"),
-    "wav": ("🎙️ تحويل إلى WAV", "audio"),
-    "m4a": ("🎼 تحويل إلى M4A", "audio"),
-    "info": ("🔎 معلومات الملف الدقيقة", "all"),
-    "imageresize": ("🖼️ تغيير مقاس الصورة", "image"),
-    "jpg": ("📷 تحويل الصورة إلى JPG", "image"),
-    "webp": ("🌐 تحويل الصورة إلى WebP", "image"),
-    "imagegray": ("⚫ صورة أبيض وأسود", "image"),
-    "imagesharp": ("✨ تحسين حدة الصورة", "image"),
-    "imageblur": ("🌫️ تمويه الصورة", "image"),
-}
-
-# خدمات لها إعدادات حقيقية قبل التنفيذ.
-SERVICE_OPTIONS = {
-    "volume": [
-        ("🔉 خفض قوي 0.5×", "0.5"), ("🔉 خفض بسيط 0.75×", "0.75"),
-        ("🔊 رفع 1.5×", "1.5"), ("🔊 رفع قوي 2×", "2.0"),
-        ("🚀 رفع أقصى 3×", "3.0"),
-    ],
-    "speed": [
-        ("🐢 بطيء 0.5×", "0.5"), ("🐢 بطيء 0.75×", "0.75"),
-        ("▶️ سريع 1.25×", "1.25"), ("🚀 سريع 1.5×", "1.5"),
-        ("⚡ سريع جدًا 2×", "2.0"),
-    ],
-    "resize": [
-        ("📱 TikTok / Reels 1080×1920", "1080x1920"),
-        ("▶️ YouTube 1920×1080", "1920x1080"),
-        ("⬛ Instagram 1080×1080", "1080x1080"),
-        ("📱 HD عمودي 720×1280", "720x1280"),
-    ],
-    "mirror": [("↔️ عكس أفقي", "horizontal"), ("↕️ عكس عمودي", "vertical")],
-    "rotate": [("↪️ تدوير 90° يمين", "right"), ("↩️ تدوير 90° يسار", "left"), ("🔄 تدوير 180°", "180")],
-    "snapshot": [("⏱️ لقطة عند 1 ثانية", "1"), ("⏱️ لقطة عند 3 ثوانٍ", "3"), ("⏱️ لقطة عند 5 ثوانٍ", "5"), ("⏱️ لقطة عند 10 ثوانٍ", "10")],
-    "compress": [("💎 أعلى جودة", "20"), ("⚖️ متوازن", "26"), ("🚀 ضغط أقوى", "30")],
-}
-
-
-def pro_kb():
+def category_kb():
     b = InlineKeyboardBuilder()
-    for key, (label, _) in PRO_SERVICES.items():
-        b.button(text=label, callback_data=f"pro:{key}")
+    for key, (title, _) in STUDIO_CATEGORIES.items():
+        b.button(text=title, callback_data=f"studio:{key}")
     b.button(text="⬅️ الرئيسية", callback_data="home")
     b.adjust(2)
     return b.as_markup()
 
 
-def option_kb(service: str):
+def tool_kb(category: str):
     b = InlineKeyboardBuilder()
-    for label, value in SERVICE_OPTIONS[service]:
-        b.button(text=label, callback_data=f"proopt:{service}:{value}")
-    b.button(text="⬅️ Pro Studio", callback_data="pro_menu")
+    data = STUDIO_CATEGORIES.get(category, {}).get("tools", {})
+    for key, (label, _) in data.items():
+        b.button(text=label, callback_data=f"tool:{category}:{key}")
+    b.button(text="⬅️ الأقسام", callback_data="pro_menu")
+    b.adjust(2)
+    return b.as_markup()
+
+
+def option_kb(category: str, service: str):
+    b = InlineKeyboardBuilder()
+    data = STUDIO_CATEGORIES[category]["tools"].get(service)
+    if not data:
+        return b.as_markup()
+    _, options = data
+    for label, value in options:
+        b.button(text=label, callback_data=f"opt:{category}:{service}:{value}")
+    b.button(text="⬅️ الأدوات", callback_data=f"studio:{category}")
     b.adjust(2)
     return b.as_markup()
 
@@ -121,7 +80,7 @@ _original_main_kb = app.main_kb
 def pro_home_kb():
     original = _original_main_kb()
     rows = [list(row) for row in original.inline_keyboard]
-    rows.insert(0, [InlineKeyboardButton(text="⚡ Pro Studio", callback_data="pro_menu")])
+    rows.insert(0, [InlineKeyboardButton(text="👑 استديو NovaBiz", callback_data="pro_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -147,7 +106,8 @@ async def save_input(message: Message, workdir: Path) -> Path:
 
 async def send_result(message: Message, result: ToolResult, service: str, jid: str):
     suffix = result.path.suffix.lower()
-    caption = f"✅ <b>{html.escape(PRO_SERVICES[service][0])}</b>\n🆔 Job: <code>{jid}</code>"
+    labels = {label_key: label for cat in STUDIO_CATEGORIES.values() for label_key, (label, _) in cat.get("tools", {}).items()}
+    caption = f"✅ <b>{html.escape(labels.get(service, service))}</b>\n🆔 Job: <code>{jid}</code>"
     if service == "frames":
         frames = sorted(result.workdir.glob("frame_*.jpg"))
         for frame in frames:
@@ -164,72 +124,79 @@ async def send_result(message: Message, result: ToolResult, service: str, jid: s
         await message.answer_video(FSInputFile(result.path), caption=caption, reply_markup=app.main_kb())
 
 
-@app.dp.message(F.text.in_({"/pro", "/tools"}))
+@app.dp.message(F.text.in_({"/pro", "/tools", "/studio"}))
 async def pro_menu(message: Message):
     app.ensure_user(message.from_user.id, message.from_user.username)
     await message.answer(
-        "<b>⚡ NovaBiz Pro Studio</b>\n\n"
-        "🚀 خدمات معالجة حقيقية وسريعة عبر FFmpeg.\n"
-        "🧠 تحليل فيديو بالذكاء الاصطناعي وإنشاء محتوى للنشر.\n"
-        "🎯 فيديو + صوت + صور في لوحة واحدة.\n"
-        "⚙️ الخدمات القابلة للضبط تعرض خياراتها قبل التنفيذ.\n\n"
-        "اختر الخدمة:", reply_markup=pro_kb())
+        "<b>👑 NovaBiz Studio</b>\n\n"
+        "اختر القسم أولاً. كل قسم يحتوي أدوات حقيقية، وكل أداة تعرض خياراتها قبل التنفيذ.\n\n"
+        "⚡ المعالجة عبر FFmpeg\n🧠 تحليل الفيديو عبر وحدة الذكاء\n📤 إرسال النتيجة بالنوع المناسب",
+        reply_markup=category_kb(),
+    )
 
 
 @app.dp.callback_query(F.data == "pro_menu")
 async def pro_menu_button(query: CallbackQuery):
     app.ensure_user(query.from_user.id, query.from_user.username)
-    await query.message.edit_text("<b>⚡ NovaBiz Pro Studio</b>\n\nاختر الأداة التي تريد تشغيلها:", reply_markup=pro_kb())
+    await query.message.edit_text("<b>👑 NovaBiz Studio</b>\n\nاختر القسم:", reply_markup=category_kb())
     await query.answer()
 
 
-@app.dp.callback_query(F.data.startswith("proopt:"))
-async def pro_option(query: CallbackQuery, state: FSMContext):
-    _, service, value = query.data.split(":", 2)
-    if service not in SERVICE_OPTIONS:
-        return await query.answer("الخيار غير متاح", show_alert=True)
-    await state.clear()
-    await state.update_data(pro_service=service, pro_option=value)
-    await state.set_state(ProForm.waiting_file)
-    label = PRO_SERVICES[service][0]
-    selected = dict(SERVICE_OPTIONS[service]).get(value, value)
+@app.dp.callback_query(F.data.startswith("studio:"))
+async def studio_category(query: CallbackQuery):
+    category = query.data.split(":", 1)[1]
+    if category not in STUDIO_CATEGORIES:
+        return await query.answer("القسم غير موجود", show_alert=True)
+    title, desc = STUDIO_CATEGORIES[category]["title"], STUDIO_CATEGORIES[category].get("description", "")
     await query.message.edit_text(
-        f"<b>{html.escape(label)}</b>\n\n"
-        f"⚙️ الإعداد: <b>{html.escape(selected)}</b>\n\n"
-        "📤 أرسل الملف الآن.\n"
-        "⚡ سيتم تنفيذ الإعداد المختار فعلياً ثم إرسال النتيجة.",
+        f"<b>{html.escape(title)}</b>\n\n{html.escape(desc)}\n\nاختر الأداة:",
+        reply_markup=tool_kb(category),
     )
     await query.answer()
 
 
-@app.dp.callback_query(F.data.startswith("pro:"))
-async def pro_start(query: CallbackQuery, state: FSMContext):
-    key = query.data.split(":", 1)[1]
-    if key not in PRO_SERVICES:
-        return await query.answer("الخدمة غير موجودة", show_alert=True)
+@app.dp.callback_query(F.data.startswith("tool:"))
+async def studio_tool(query: CallbackQuery, state: FSMContext):
+    _, category, service = query.data.split(":", 2)
+    data = STUDIO_CATEGORIES.get(category, {}).get("tools", {}).get(service)
+    if not data:
+        return await query.answer("الأداة غير موجودة", show_alert=True)
+    label, options = data
     await state.clear()
-    await state.update_data(pro_service=key)
-    if key == "video_ai":
+    await state.update_data(pro_category=category, pro_service=service)
+    if service == "video_ai":
         await state.set_state(ProForm.waiting_video_ai)
         await query.message.edit_text(
-            "<b>🧠 فهم الفيديو + تجهيز المحتوى</b>\n\n"
-            "📤 أرسل الفيديو الآن.\n\n"
-            "سيتم تحليل لقطات حقيقية من الفيديو ثم إنشاء:\n"
-            "📝 Caption مناسب\n👤 Bio/وصف مناسب للنشر\n#️⃣ خمسة هاشتاقات\n"
-            "🎯 الموضوع والجمهور والأسلوب\n🪝 Hook و CTA\n\n"
-            "⚡ ستصلك النتيجة بعد التحليل."
-        )
-    elif key in SERVICE_OPTIONS:
-        await query.message.edit_text(
-            f"<b>{html.escape(PRO_SERVICES[key][0])}</b>\n\n"
-            "⚙️ اختر الإعداد المطلوب أولاً:",
-            reply_markup=option_kb(key),
+            "<b>🧠 فهم الفيديو وتجهيز المحتوى</b>\n\n"
+            "أرسل الفيديو، وسيتم تحليل لقطات حقيقية منه وإنتاج:\n"
+            "📝 وصف/Caption\n👤 Bio مناسب\n🎯 موضوع وجمهور\n🪝 Hook\n📣 CTA\n#️⃣ خمسة هاشتاقات\n\n"
+            "⚡ التحليل يتم على الفيديو المرسل، وليس على اسم الملف فقط."
         )
     else:
-        await state.set_state(ProForm.waiting_file)
-        label = PRO_SERVICES[key][0]
-        prompt = "📤 أرسل الملف للحصول على معلوماته." if key == "info" else "📤 أرسل الملف الآن وسيبدأ التنفيذ مباشرة."
-        await query.message.edit_text(f"<b>{html.escape(label)}</b>\n\n{prompt}\n\n⚡ المعالجة محسّنة للسرعة.")
+        await query.message.edit_text(
+            f"<b>{html.escape(label)}</b>\n\n"
+            "⚙️ اختر الإعداد المطلوب:",
+            reply_markup=option_kb(category, service),
+        )
+    await query.answer()
+
+
+@app.dp.callback_query(F.data.startswith("opt:"))
+async def studio_option(query: CallbackQuery, state: FSMContext):
+    _, category, service, value = query.data.split(":", 3)
+    if service not in STUDIO_CATEGORIES.get(category, {}).get("tools", {}):
+        return await query.answer("الخيار غير متاح", show_alert=True)
+    await state.clear()
+    await state.update_data(pro_category=category, pro_service=service, pro_option=value)
+    await state.set_state(ProForm.waiting_file)
+    label = STUDIO_CATEGORIES[category]["tools"][service][0]
+    option_label = next((x[0] for x in STUDIO_CATEGORIES[category]["tools"][service][1] if x[1] == value), value)
+    await query.message.edit_text(
+        f"<b>{html.escape(label)}</b>\n\n"
+        f"⚙️ الاختيار: <b>{html.escape(option_label)}</b>\n\n"
+        "📤 أرسل الملف الآن.\n"
+        "⏳ سيظهر لك أولاً أنه جاري التجهيز ثم سيتم إرسال الناتج."
+    )
     await query.answer()
 
 
@@ -241,7 +208,7 @@ async def video_ai_file(message: Message, state: FSMContext):
         await state.clear()
         return await message.answer("❌ رصيدك غير كافٍ.", reply_markup=app.main_kb())
     jid = app.job_start(message.from_user.id, "pro_video_intelligence", cost)
-    progress = await message.answer("⏳ <b>جاري فهم الفيديو...</b>\n\n🎞️ استخراج لقطات ممثلة\n🧠 تحليل المحتوى\n📝 تجهيز النص والهاشتاقات...")
+    progress = await message.answer("⏳ <b>جاري فهم الفيديو...</b>\n\n🎞️ استخراج لقطات\n🧠 تحليل المحتوى\n📝 تجهيز النص والهاشتاقات...")
     workdir = Path(tempfile.mkdtemp(prefix="novabiz_video_ai_input_"))
     frames_dir: Path | None = None
     try:
@@ -289,19 +256,21 @@ async def run_service(service: str, src: Path, option: str | None = None) -> Too
     if service == "grayvideo": return await grayscale_video(src)
     if service == "sharpenvideo": return await sharpen_video(src)
     if service == "snapshot": return await video_snapshot(src, float(option or 1))
-    if service == "gif": return await make_gif(src)
-    if service == "thumbnail": return await make_thumbnail(src)
-    if service == "frames": return await extract_frames(src)
+    if service == "gif": return await make_gif(src, fps=int(option or 12))
+    if service == "thumbnail": return await make_thumbnail(src, width=int(option or 1280))
+    if service == "frames": return await extract_frames(src, count=int(option or 9))
     if service == "mute": return await mute_video(src)
     if service == "web": return await web_optimize(src)
     if service == "rotate": return await rotate_video(src, option or "right")
+    if service == "volume": return await audio_volume(src, float(option or 1.5))
     if service == "extract_audio": return await extract_audio(src)
     if service == "convert_audio": return await convert_audio(src)
     if service == "normalize": return await normalize_audio(src)
-    if service == "volume": return await audio_volume(src, float(option or 1.5))
     if service == "wav": return await audio_wav(src)
     if service == "m4a": return await audio_m4a(src)
-    if service == "imageresize": return await image_resize(src, 1080, 1080)
+    if service == "imageresize":
+        w, h = (int(x) for x in (option or "1080x1080").split("x", 1))
+        return await image_resize(src, w, h)
     if service == "jpg": return await image_jpg(src)
     if service == "webp": return await image_webp(src)
     if service == "imagegray": return await image_grayscale(src)
@@ -315,16 +284,16 @@ async def pro_file(message: Message, state: FSMContext):
     data = await state.get_data()
     service = data.get("pro_service")
     option = data.get("pro_option")
-    if service not in PRO_SERVICES:
+    if not service:
         await state.clear()
         return await message.answer("❌ انتهت جلسة الخدمة.", reply_markup=app.main_kb())
     app.ensure_user(message.from_user.id, message.from_user.username)
     cost = 1
     if not app.charge(message.from_user.id, cost):
         await state.clear()
-        return await message.answer("❌ رصيدك غير كافٍ.", reply_markup=app.main_kb())
+        return await message.answer("❌ رصيدك غير كافٍ. لا يمكن تشغيل الخدمات حتى يضاف رصيد جديد.", reply_markup=app.main_kb())
     jid = app.job_start(message.from_user.id, f"pro_{service}", cost)
-    progress = await message.answer("⏳ <b>جاري تجهيز العملية...</b>\n\n⚙️ تنفيذ الإعداد الحقيقي الآن...")
+    progress = await message.answer("⏳ <b>جاري تجهيز العملية...</b>\n\n⚙️ تنفيذ الخدمة فعلياً الآن...\n📤 سيتم إرسال النتيجة عند الانتهاء.")
     input_workdir = Path(tempfile.mkdtemp(prefix="novabiz_pro_input_"))
     result: ToolResult | None = None
     try:
@@ -343,7 +312,7 @@ async def pro_file(message: Message, state: FSMContext):
             return
         result = await run_service(service, src, option)
         if result is None:
-            raise ToolError("الخدمة غير مفعلة.")
+            raise ToolError("الخدمة غير مفعلة أو لا يوجد تنفيذ حقيقي لها.")
         app.job_end(jid, True)
         await state.clear()
         await progress.edit_text("✅ <b>اكتملت المعالجة.</b>\n\n📤 إرسال الناتج الآن...")
