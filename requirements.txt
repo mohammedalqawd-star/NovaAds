@@ -6,4 +6,4 @@ pydantic-settings>=2.8,<3
 pytest>=8,<9
 pytest-asyncio>=1,<2
 
-yt-dlp>=2026.8.19
+yt-dlp[default]>=2026.8.19
