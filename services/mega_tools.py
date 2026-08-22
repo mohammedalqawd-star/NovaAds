@@ -14,11 +14,7 @@ def _work(prefix: str) -> Path:
 
 
 async def _ffmpeg(args: list[str]) -> None:
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    proc = await asyncio.create_subprocess_exec("ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
     _, err = await proc.communicate()
     if proc.returncode:
         raise ToolError(err.decode(errors="ignore").strip()[-2000:] or "FFmpeg failed")
@@ -133,7 +129,7 @@ async def image_sharpen(src: Path) -> ToolResult:
     _check_input(src)
     work = _work("image_sharp")
     out = work / "sharpened.png"
-    await _ffmpeg(["-i", str(src), "-vf", "unsharp=5:5:1.0:5:5:0", "-frames:v", "1", str(out)])
+    await _ffmpeg(["-i", str(src), "-vf", "unsharp=5:5:1.0:5:5:0", "-frames:v", "1", "-q:v", "2", str(out)])
     return _result(work, out)
 
 
@@ -146,13 +142,18 @@ async def image_blur(src: Path) -> ToolResult:
 
 
 async def audio_volume(src: Path, factor: float = 1.5) -> ToolResult:
+    """Video volume service: preserve video and modify only its audio."""
     _check_input(src)
     if not 0.25 <= factor <= 3:
         raise ToolError("مستوى الصوت يجب أن يكون بين 0.25x و3x.")
     work = _work("volume")
-    out = work / "volume.mp3"
-    await _ffmpeg(["-i", str(src), "-vn", "-af", f"volume={factor:g}", "-c:a", "libmp3lame", "-q:a", "2", str(out)])
+    out = work / "volume.mp4"
+    await _ffmpeg(["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-af", f"volume={factor:g}", "-movflags", "+faststart", str(out)])
     return _result(work, out)
+
+
+async def video_volume(src: Path, factor: float = 1.5) -> ToolResult:
+    return await audio_volume(src, factor)
 
 
 async def audio_wav(src: Path) -> ToolResult:
